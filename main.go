@@ -814,22 +814,31 @@ func main() {
 				}
 			}
 			if !isSflow {
-				mySflowCounter := GenericSFlowDatagram{}
+				genericSflowCounter := GenericSFlowDatagram{}
 				fmt.Println("Counter Sample")
-				decodeGenericSFlowDatagramLayerByByte(p.Layers()[3].LayerContents(), &mySflowCounter)
+				decodeGenericSFlowDatagramLayerByByte(p.Layers()[3].LayerContents(), &genericSflowCounter)
 
-				if len(mySflowCounter.CounterSamples) > 0 {
-					for i := 0; i < len(mySflowCounter.CounterSamples); i++ {
-						for ii := 0; ii < len(mySflowCounter.CounterSamples[i].Records); ii++ {
-							if reflect.TypeOf(mySflowCounter.CounterSamples[i].Records[ii]) == reflect.TypeOf((*SFlowOFPortCounters)(nil)).Elem() {
-								sFlowOFPortCounter, ok := (mySflowCounter.CounterSamples[i].Records[ii]).(SFlowOFPortCounters)
+				if len(genericSflowCounter.CounterSamples) > 0 {
+					for i := 0; i < len(genericSflowCounter.CounterSamples); i++ {
+						var currentSwitchDataPathId []byte
+						for ii := 0; ii < len(genericSflowCounter.CounterSamples[i].Records); ii++ {
+							// If Record is "SFlowOFPortCounters"
+							if reflect.TypeOf(genericSflowCounter.CounterSamples[i].Records[ii]) == reflect.TypeOf((*SFlowOFPortCounters)(nil)).Elem() {
+								sFlowOFPortCounter, ok := (genericSflowCounter.CounterSamples[i].Records[ii]).(SFlowOFPortCounters)
 								if ok {
+									currentSwitchDataPathId = sFlowOFPortCounter.OfDataPathId
 									if len(xnfvAllSwitches.allAvailableSwitches) > 0 {
+										isSwitchAddedBefore := false
 										for j := 0; j < len(xnfvAllSwitches.allAvailableSwitches); j ++ {
 											// Check if specific switch add to xnfvAllSwitches before or not
-											if !reflect.DeepEqual(xnfvAllSwitches.allAvailableSwitches[j].switchDataPath, sFlowOFPortCounter.OfDataPathId) {
-
+											if reflect.DeepEqual(xnfvAllSwitches.allAvailableSwitches[j].switchDataPath, sFlowOFPortCounter.OfDataPathId) {
+												isSwitchAddedBefore = true
+												break
 											}
+										}
+										if !isSwitchAddedBefore {
+											xnfvAllSwitches.allAvailableSwitches = append(xnfvAllSwitches.allAvailableSwitches, XnfSwitchSflow{
+												sFlowOFPortCounter.OfDataPathId, nil})
 										}
 									} else {
 										// "xnfvAllSwitches" is empty So add new Switch to it
@@ -837,7 +846,42 @@ func main() {
 											sFlowOFPortCounter.OfDataPathId, nil})
 									}
 								}
-
+							} else if reflect.TypeOf(genericSflowCounter.CounterSamples[i].Records[ii]) == reflect.TypeOf((*SFlowOFPortNameCounters)(nil)).Elem() {
+								sFlowOFPortNameCounter, ok := (genericSflowCounter.CounterSamples[i].Records[ii]).(SFlowOFPortNameCounters)
+								if ok && len(currentSwitchDataPathId) > 0 {
+									if len(xnfvAllSwitches.allAvailableSwitches) > 0 {
+										for j := 0; j < len(xnfvAllSwitches.allAvailableSwitches); j ++ {
+											// Check if specific switch add to xnfvAllSwitches before or not
+											if reflect.DeepEqual(xnfvAllSwitches.allAvailableSwitches[j].switchDataPath, currentSwitchDataPathId) {
+												// find specific port on switch
+												if len(xnfvAllSwitches.allAvailableSwitches[j].switchPortsStatistics) > 0 {
+													isPortStatisticsAddedBefore := false
+													for i := 0; i < len(xnfvAllSwitches.allAvailableSwitches[j].switchPortsStatistics); i++ {
+														if xnfvAllSwitches.allAvailableSwitches[j].switchPortsStatistics[i].interfacePortName == sFlowOFPortNameCounter.OfPortName {
+															isPortStatisticsAddedBefore = true
+															break
+														}
+													}
+													if !isPortStatisticsAddedBefore {
+														xnfvAllSwitches.allAvailableSwitches[j].switchPortsStatistics = append(xnfvAllSwitches.allAvailableSwitches[j].switchPortsStatistics,
+															XnfvSwitchPort{
+																sFlowOFPortNameCounter.OfPortName,
+																genericSflowCounter.CounterSamples[i].SourceIDIndex,
+																[]string{},
+																genericSflowCounter})
+													}
+												} else {
+													xnfvAllSwitches.allAvailableSwitches[j].switchPortsStatistics = append(xnfvAllSwitches.allAvailableSwitches[j].switchPortsStatistics,
+														XnfvSwitchPort{
+															sFlowOFPortNameCounter.OfPortName,
+															genericSflowCounter.CounterSamples[i].SourceIDIndex,
+															[]string{},
+															genericSflowCounter})
+												}
+											}
+										}
+									}
+								}
 							}
 						}
 
