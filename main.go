@@ -7,10 +7,13 @@ import (
 	"github.com/google/gopacket/layers"
 	"errors"
 	"net"
+	"encoding/json"
+	"github.com/google/gopacket/pcap"
+	"log"
+	"reflect"
 )
 
 var GenericSFlowType = gopacket.RegisterLayerType(12345, gopacket.LayerTypeMetadata{Name: "MyLayerType", Decoder: gopacket.DecodeFunc(decodeGenericSFlowDatagramLayer)})
-
 
 // ****************************************************************************************************
 //  Register Costume SFlow Layer
@@ -48,7 +51,7 @@ func decodeGenericSFlowDatagramLayer(data []byte, p gopacket.PacketBuilder) erro
 func decodeGenericSFlowDatagramLayerByByte(data []byte, myl *GenericSFlowDatagram) error {
 	var agentAddressType layers.SFlowIPType
 	fmt.Println("Data in decodeMyLayerByByte")
-	fmt.Println(data)
+	//fmt.Println(data)
 
 	data, myl.DatagramVersion = data[4:], binary.BigEndian.Uint32(data[:4])
 	data, agentAddressType = data[4:], layers.SFlowIPType(binary.BigEndian.Uint32(data[:4]))
@@ -549,7 +552,7 @@ func decodeCounterSample(data *[]byte, expanded bool) (SFlowCounterSample, error
 		*data, sdc = (*data)[4:], SFlowDataSource(binary.BigEndian.Uint32((*data)[:4]))
 		s.SourceIDClass, s.SourceIDIndex = sdc.decode()
 	}
-	fmt.Println("SourceIDIndex: ", s.SourceIDIndex)
+	//fmt.Println("SourceIDIndex: ", s.SourceIDIndex)
 	*data, s.RecordCount = (*data)[4:], binary.BigEndian.Uint32((*data)[:4])
 
 	for i := uint32(0); i < s.RecordCount; i++ {
@@ -691,7 +694,7 @@ func decodeOFPortCounters(data *[]byte) (SFlowOFPortCounters, error) {
 	//*data, ofc.OfDataPathId = (*data)[8:], binary.BigEndian.Uint64((*data)[:8])
 	*data, ofc.OfDataPathId = (*data)[8:], (*data)[:8]
 	*data, ofc.OfPort = (*data)[4:], binary.BigEndian.Uint32((*data)[:4])
-	fmt.Println("Path ID: ", ofc.OfDataPathId)
+	//fmt.Println("Path ID: ", ofc.OfDataPathId)
 	return ofc, nil
 }
 
@@ -716,13 +719,165 @@ func decodeOFPortNameCounters(data *[]byte) (SFlowOFPortNameCounters, error) {
 	portNameLenWithPad = int(portNameLenght + ((4 - portNameLenght) % 4))
 	*data, portNameBytes = (*data)[portNameLenWithPad:], (*data)[:portNameLenWithPad]
 	ofpnc.OfPortName = string(portNameBytes[:portNameLenght])
-	fmt.Println("port name: ", ofpnc.OfPortName)
+	//fmt.Println("port name: ", ofpnc.OfPortName)
 
 	return ofpnc, nil
 }
 
-
-
 func main() {
+	xnfvAllSwitches := XnfvAllSwitches{}
+
+	if handle, err := pcap.OpenLive("en0", 1600, true, pcap.BlockForever); err != nil {
+		//if handle, err := pcap.OpenLive(); err != nil {
+		panic(err)
+	} else if err := handle.SetBPFFilter("udp and port 6343"); err != nil { // optional
+		panic(err)
+	} else {
+
+		packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
+		for packet := range packetSource.Packets() {
+			var isSflow = false
+			p := gopacket.NewPacket(packet.Data(), layers.LayerTypeEthernet, gopacket.Default)
+
+			fmt.Println("---------------------------------------------------------")
+			fmt.Println("*************************** ")
+			if len(packet.Layers()) > 0 {
+				for _, layer := range packet.Layers() {
+					if layer.LayerType() == layers.LayerTypeSFlow {
+						isSflow = true
+						//decodeMyLayerByByte(layer.LayerContents(), &myl)
+						//fmt.Println("Sflow Sample")
+						sflow := layer.(*layers.SFlowDatagram)
+						fmt.Println(sflow.SubAgentID)
+						if len(sflow.FlowSamples) > 0 {
+							data, err := json.Marshal(sflow)
+							if err != nil {
+								log.Fatal(err)
+							}
+							fmt.Printf("%s\n", data)
+
+							for i := 0; i < len(sflow.FlowSamples); i++ {
+
+								//data, err := json.Marshal(sflow.FlowSamples[i])
+								//if err != nil {
+								//	log.Fatal(err)
+								//}
+								//fmt.Printf("%s\n", data)
+
+								//fmt.Println(sflow.FlowSamples[i].InputInterface)
+								//fmt.Println(sflow.FlowSamples[i].InputInterfaceFormat)
+								if len(sflow.FlowSamples[i].Records) > 0 {
+									for j := 0; j < len(sflow.FlowSamples[i].Records); j++ {
+										fmt.Println("++++++++++++++++++++")
+										//fmt.Println(string((sflow.FlowSamples[i].Records[j]).(type)))
+										//fmt.Println(reflect.TypeOf(sflow.FlowSamples[i].Records[j]))
+
+										if reflect.TypeOf(sflow.FlowSamples[i].Records[j]) == reflect.TypeOf((*layers.SFlowRawPacketFlowRecord)(nil)).Elem() {
+											t1, ok := (sflow.FlowSamples[i].Records[j]).(layers.SFlowRawPacketFlowRecord);
+											if ok {
+
+												packet := gopacket.NewPacket(t1.Header.Data(), layers.LayerTypeEthernet, gopacket.Default)
+												fmt.Println(packet)
+												if len(packet.Layers()) > 0 {
+													for _, layer := range packet.Layers() {
+														fmt.Println("OOOOOOOKKKKKKK $$$$$$$$$$")
+														fmt.Println(layer.LayerType())
+														data, err := json.Marshal(layer)
+														if err != nil {
+															log.Fatal(err)
+														}
+														fmt.Printf("%s\n", data)
+													}
+												}
+
+											}
+										}
+
+										//fmt.Println(sflow.FlowSamples[i].Records[j])
+									}
+								}
+							}
+						}
+
+						//fmt.Println("111111")
+						//fmt.Println(layer.LayerPayload())
+						//fmt.Println("2222222")
+						//fmt.Println(layer.LayerContents())
+						//decodeMyLayerByByte(layer.LayerPayload(), &myl)
+						//fmt.Println(myl)
+						//fmt.Println(myl)
+					} else {
+						//decodeMyLayerByByte(layer.LayerContents(), &myl)
+						//fmt.Println("Counter Sample")
+						//fmt.Println(myl)
+					}
+				}
+			}
+			if !isSflow {
+				mySflowCounter := GenericSFlowDatagram{}
+				fmt.Println("Counter Sample")
+				decodeGenericSFlowDatagramLayerByByte(p.Layers()[3].LayerContents(), &mySflowCounter)
+
+				if len(mySflowCounter.CounterSamples) > 0 {
+					for i := 0; i < len(mySflowCounter.CounterSamples); i++ {
+						for ii := 0; ii < len(mySflowCounter.CounterSamples[i].Records); ii++ {
+							if reflect.TypeOf(mySflowCounter.CounterSamples[i].Records[ii]) == reflect.TypeOf((*SFlowOFPortCounters)(nil)).Elem() {
+								sFlowOFPortCounter, ok := (mySflowCounter.CounterSamples[i].Records[ii]).(SFlowOFPortCounters)
+								if ok {
+									if len(xnfvAllSwitches.allAvailableSwitches) > 0 {
+										for j := 0; j < len(xnfvAllSwitches.allAvailableSwitches); j ++ {
+											// Check if specific switch add to xnfvAllSwitches before or not
+											if !reflect.DeepEqual(xnfvAllSwitches.allAvailableSwitches[j].switchDataPath, sFlowOFPortCounter.OfDataPathId) {
+
+											}
+										}
+									} else {
+										// "xnfvAllSwitches" is empty So add new Switch to it
+										xnfvAllSwitches.allAvailableSwitches = append(xnfvAllSwitches.allAvailableSwitches, XnfSwitchSflow{
+											sFlowOFPortCounter.OfDataPathId, nil})
+									}
+								}
+
+							}
+						}
+
+					}
+				}
+				if len(xnfvAllSwitches.allAvailableSwitches) > 0 {
+					for i := 0; i < len(xnfvAllSwitches.allAvailableSwitches); i++ {
+
+					}
+				} else {
+
+				}
+				//data, err := json.Marshal(mySflowCounter)
+				//if err != nil {
+				//	log.Fatal(err)
+				//}
+				//fmt.Printf("%s\n", data)
+			}
+			fmt.Println("***************************")
+			fmt.Println(" ");
+			fmt.Println(" ");
+			fmt.Println(" ");
+			fmt.Println(" ");
+		}
+	}
 
 }
+
+//type XnfvAllSwitches struct {
+//	allAvailableSwitches []XnfSwitchSflow
+//}
+//
+//type XnfSwitchSflow struct {
+//	switchDataPath string
+//	switchPortsStatistics []XnfvSwitchPort
+//}
+//
+//type XnfvSwitchPort struct{
+//	interfacePortName string
+//	interfacePortIndex string
+//	PacketHeader []string
+//	interfaceSflowDatagram []GenericSFlowDatagram
+//}
