@@ -773,22 +773,36 @@ func main() {
 										//fmt.Println(reflect.TypeOf(sflow.FlowSamples[i].Records[j]))
 
 										if reflect.TypeOf(sflow.FlowSamples[i].Records[j]) == reflect.TypeOf((*layers.SFlowRawPacketFlowRecord)(nil)).Elem() {
-											t1, ok := (sflow.FlowSamples[i].Records[j]).(layers.SFlowRawPacketFlowRecord);
+											t1, ok := (sflow.FlowSamples[i].Records[j]).(layers.SFlowRawPacketFlowRecord)
 											if ok {
 
-												packet := gopacket.NewPacket(t1.Header.Data(), layers.LayerTypeEthernet, gopacket.Default)
-												fmt.Println(packet)
-												if len(packet.Layers()) > 0 {
-													for _, layer := range packet.Layers() {
-														fmt.Println("OOOOOOOKKKKKKK $$$$$$$$$$")
-														fmt.Println(layer.LayerType())
-														data, err := json.Marshal(layer)
-														if err != nil {
-															log.Fatal(err)
+												//found switch with specific in InputInterface ID
+												if len(xnfvAllSwitches.allAvailableSwitches) > 0 {
+													for jj := 0; jj < len(xnfvAllSwitches.allAvailableSwitches); jj ++ {
+														if len(xnfvAllSwitches.allAvailableSwitches[jj].switchPortsStatistics) > 0 {
+															for ii := 0; ii < len(xnfvAllSwitches.allAvailableSwitches[jj].switchPortsStatistics); ii ++ {
+																if xnfvAllSwitches.allAvailableSwitches[jj].switchPortsStatistics[ii].interfacePortIndex == SFlowSourceValue(sflow.FlowSamples[i].InputInterface) {
+																	packet := gopacket.NewPacket(t1.Header.Data(), layers.LayerTypeEthernet, gopacket.Default)
+																	xnfvAllSwitches.allAvailableSwitches[jj].switchPortsStatistics[ii].PacketHeader = packet.Layers()
+																	break
+																}
+															}
 														}
-														fmt.Printf("%s\n", data)
 													}
 												}
+												//packet := gopacket.NewPacket(t1.Header.Data(), layers.LayerTypeEthernet, gopacket.Default)
+												//fmt.Println(packet)
+												//if len(packet.Layers()) > 0 {
+												//	for _, layer := range packet.Layers() {
+												//		fmt.Println("OOOOOOOKKKKKKK $$$$$$$$$$")
+												//		fmt.Println(layer.LayerType())
+												//		data, err := json.Marshal(layer)
+												//		if err != nil {
+												//			log.Fatal(err)
+												//		}
+												//		fmt.Printf("%s\n", data)
+												//	}
+												//}
 
 											}
 										}
@@ -867,7 +881,7 @@ func main() {
 															XnfvSwitchPort{
 																sFlowOFPortNameCounter.OfPortName,
 																genericSflowCounter.CounterSamples[i].SourceIDIndex,
-																[]string{},
+																[]gopacket.Layer{},
 																genericSflowCounter})
 													}
 												} else {
@@ -875,7 +889,7 @@ func main() {
 														XnfvSwitchPort{
 															sFlowOFPortNameCounter.OfPortName,
 															genericSflowCounter.CounterSamples[i].SourceIDIndex,
-															[]string{},
+															[]gopacket.Layer{},
 															genericSflowCounter})
 												}
 											}
@@ -887,18 +901,30 @@ func main() {
 
 					}
 				}
-				if len(xnfvAllSwitches.allAvailableSwitches) > 0 {
-					for i := 0; i < len(xnfvAllSwitches.allAvailableSwitches); i++ {
 
-					}
-				} else {
-
-				}
 				//data, err := json.Marshal(mySflowCounter)
 				//if err != nil {
 				//	log.Fatal(err)
 				//}
 				//fmt.Printf("%s\n", data)
+			}
+
+			//fmt.Println(xnfvAllSwitches)
+			//data, err := json.Marshal(xnfvAllSwitches)
+			//if err != nil {
+			//	log.Fatal(err)
+			//}
+			//fmt.Printf("%s\n", data)
+
+			for i := 0; i < len(xnfvAllSwitches.allAvailableSwitches); i++ {
+				fmt.Println("<------------>")
+				fmt.Println("switchDataPath -> ", xnfvAllSwitches.allAvailableSwitches[i].switchDataPath)
+				for j := 0; j < len(xnfvAllSwitches.allAvailableSwitches[i].switchPortsStatistics); j++ {
+					fmt.Println("interfacePortName -> ", xnfvAllSwitches.allAvailableSwitches[i].switchPortsStatistics[j].interfacePortName)
+					fmt.Println("interfacePortIndex -> ", xnfvAllSwitches.allAvailableSwitches[i].switchPortsStatistics[j].interfacePortIndex)
+					fmt.Println("SubAgentID -> ", xnfvAllSwitches.allAvailableSwitches[i].switchPortsStatistics[j].interfaceSflowDatagram.SubAgentID)
+					fmt.Println("PacketHeader -> ", xnfvAllSwitches.allAvailableSwitches[i].switchPortsStatistics[j].PacketHeader)
+				}
 			}
 			fmt.Println("***************************")
 			fmt.Println(" ");
@@ -906,22 +932,7 @@ func main() {
 			fmt.Println(" ");
 			fmt.Println(" ");
 		}
+
 	}
 
 }
-
-//type XnfvAllSwitches struct {
-//	allAvailableSwitches []XnfSwitchSflow
-//}
-//
-//type XnfSwitchSflow struct {
-//	switchDataPath string
-//	switchPortsStatistics []XnfvSwitchPort
-//}
-//
-//type XnfvSwitchPort struct{
-//	interfacePortName string
-//	interfacePortIndex string
-//	PacketHeader []string
-//	interfaceSflowDatagram []GenericSFlowDatagram
-//}
