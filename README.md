@@ -1,4 +1,4 @@
-# XNFV-SflowCollector (under development !!! will be available soon )
+# XNFV-SflowCollector 
 
 Sflow Collector for XeniumNFV platform, written in GoLang using google/gopacket Library
 
